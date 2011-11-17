@@ -1,7 +1,0 @@
-float32 Voltage
-float32 Current
-float32 StateofCharge
-float32 Temperature1
-float32 Temperature2
-bool LeftCutterStatus
-bool RightCutterStatus
