@@ -8,7 +8,9 @@
   <license>BSD</license>
   <review status="unreviewed" notes=""/>
   <url>http://ros.org/wiki/automow_pcb</url>
+
   <depend package="rosserial_arduino"/>
+  <depend package="automow_node"/>
 
 </package>
 
