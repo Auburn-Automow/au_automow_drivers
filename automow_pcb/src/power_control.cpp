@@ -5,8 +5,9 @@
 #include <DallasTemperature.h>
 #include <Metro.h>
 
-#include <automow_pcb/Status.h>
-#include <automow_pcb/CutterControl.h>
+#include <automow_node/BatteryStatus.h>
+#include <automow_node/Cutters.h>
+#include <automow_node/Temperatures.h>
 
 // Digital IO
 #define pin_leftCutterCheck         2
@@ -24,10 +25,6 @@
 #define pin_current                 1
 
 char batteryState = 0;
-#define BS_CHARGING 1
-#define BS_DISCHARGING 2
-#define BS_CRITICAL 3
-
 char stateOfCharge;
 
 bool ledState = LOW;
@@ -149,27 +146,23 @@ void setup()
 
 }
 
-
 void loop()
 {
-    status_msg.voltage = analogRead(PIN_VOLTAGE);
+    status_msg.voltage = 3 * analogRead(PIN_VOLTAGE);
     status_msg.current = analogRead(PIN_CURRENT);
-
-    float ADCVolts = 0.03 * status_msg.voltage + 0.027;
-    if (ADCVolts > 25.5)
+    
+    if (status_msg.voltage > 25500)
     {
         batteryState = BS_CHARGING;
         stateOfCharge = 100; 
     }   
-    else if(ADCVolts < 23)
+    else if(status_msg.voltage < 23000)
     {
         batteryState = BS_CRITICAL;
-        stateOfCharge = (char)(ADCVolts  * 40 - 900); 
     }
     else
     {
         batteryState = BS_DISCHARGING;
-        stateOfCharge = (char)(ADCVolts * 40 - 900); 
     }
 
     status_msg.cutter_1 = (digitalRead(CUTTER_L_CHECK) ? FALSE : TRUE);
