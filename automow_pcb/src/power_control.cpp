@@ -24,81 +24,77 @@
 #define pin_voltage                 0
 #define pin_current                 1
 
-char batteryState = 0;
-char stateOfCharge;
-
-bool ledState = LOW;
-bool cutterLeftState;
-bool cutterRightState;
-
-OneWire oneWireTop(PIN_TEMP_TOP);  
-OneWire oneWireBot(PIN_TEMP_BOT);
-DallasTemperature tempTop(&oneWireTop);
-DallasTemperature tempBot(&oneWireBot);
-DeviceAddress topAddress;
-DeviceAddress botAddress;
-
-Metro ledMetro = Metro(500);
-Metro msgMetro = Metro(250);
-
 ros::NodeHandle nh;
 
-automow_pcb::Status status_msg;
-ros::Publisher status_pub("power_status", &status_msg);
+automow_node::BatteryStatus msgBatteryStatus;
 
-ros::Subscriber<automow_pcb::CutterControl> cutter_sub("cutter_control", 
-                                                        &cb_cutterControl)
+enum BatteryState { DISCHARGING = 0,
+					CHARGING_RECOVERY,
+					CHARGING,
+					TRICKLE_CHARGING,
+					DISCHARGING_CRITICAL,
+					ERROR};
 
+bool ledState = LOW;
+uint8_t batteryState = ERROR;
+uint8_t stateOfCharge = 100;
 
-void cb_cutterControl(const automow_pcb::CutterControl& msg)
-{
-    digitalWrite(pin_leftCutterControl,msg.cutter_1);
-    digitalWrite(pin_rightCutterControl,msg.cutter_2);
-    cutterLeftState = HIGH;
-    cutterRightState = HIGH;
-}
+ros::Publisher battery_pub("battery_status", &msgBatteryStatus);
 
 void updateBatteryDisplay(void)
 {
-    if(ledState == HIGH)
-        ledState = LOW;
-    else
-        ledState = HIGH;
+	if(ledState == HIGH)
+		ledState = LOW;
+	else
+		ledState = HIGH;
    
-    switch(batteryState)
-    {
-    case BS_CHARGING:
-        digitalWrite(pin_ledHigh,ledState);
-        digitalWrite(pin_ledMid,LOW);
-        digitalWrite(pin_ledLow,LOW);
-        break;
-    case BS_CRITICAL:
-        digitalWrite(pin_ledHigh,LOW);
-        digitalWrite(pin_ledMid,LOW);
-        digitalWrite(pin_ledLow,ledState);
-        break;
-    default:
-        unsigned char temp = stateOfCharge/20;
+    switch(batteryState) {
+	case ERROR:
+		digitalWrite(pin_ledHigh, LOW);
+		digitalWrite(pin_ledMid, LOW);
+		digitalWrite(pin_ledLow, LOW);
+		break;
+	case CHARGING:
+		digitalWrite(pin_ledHigh, ledState);
+		digitalWrite(pin_ledMid, ledState);
+		digitalWrite(pin_ledLow, LOW);
+		break;
+	case TRICKLE_CHARGING:
+		digitalWrite(pin_ledHigh, ledState);
+		digitalWrite(pin_ledMid, LOW);
+		digitalWrite(pin_ledLow, LOW);
+		break;
+	case DISCHARGING:
         bool a,b,c;
-        switch(temp){
-            case 5:
-               a=1;b=0;c=0;
-               break;
-            case 4:
-               a=1;b=0;c=0;
-               break;
-            case 3:
-               a=1;b=1;c=0;
-               break;
-            case 2:
-               a=0;b=1;c=0;
-               break;
-            case 1:
-               a=0;b=1;c=1;
-               break;
+        switch(stateOfCharge/20){
+		case 5:
+		case 4:
+		   a=1;b=0;c=0;
+		   break;
+		case 3:
+		   a=1;b=1;c=0;
+		   break;
+		case 2:
+		   a=0;b=1;c=0;
+		   break;
+		case 1:
+		   a=0;b=1;c=1;
+		   break;
+		case 0:
+		   a=0;b=0;c=1;
+		   break;
         }
-        digitalWrite(pin_ledHigh,a);
-        digitalWrite(pin_ledMid,b);
+        digitalWrite(pin_ledHigh, a);
+        digitalWrite(pin_ledMid, b);
+		digitalWrite(pin_ledLow, c);
+		break;
+	case DISCHARGING_CRITICAL:
+		digitalWrite(pin_ledHigh, LOW);
+		digitalWrite(pin_ledMid, LOW);
+		digitalWrite(pin_ledLow, ledState);
+		break;
+	default:
+		break;
     }
 }
 
@@ -114,88 +110,66 @@ void setup()
     // Turn off the cutters by default
     digitalWrite(pin_leftCutterControl,LOW);
     digitalWrite(pin_rightCutterControl,LOW);
+
+	// Initialize the rear panel LED outputs
     pinMode(pin_ledHigh,OUTPUT);
     pinMode(pin_ledMid,OUTPUT);
-    pinMode(pin_ledLow,OUTPUT);
-
+	pinMode(pin_ledLow,OUTPUT);
+	digitalWrite(pin_ledHigh, LOW);
+	digitalWrite(pin_ledMid, LOW);
+	digitalWrite(pin_ledLow, LOW);
+	
     nh.initNode(); 
-    nh.advertise(status_pub);
-    nh.subscribe(cutter_sub);
-
-    tempTop.begin();
-    tempBot.begin();
-
-    if (!tempTop.getAddress(topAddress,0))
-    {
-        nh.logwarn("No Temperature Sensor Detected");
-        status_msg.temperature_1 = 0;
-    } else {
-        tempTop.setResolution(topAddress, 9);
-        tempTop.setWaitForConversion(false);
-        tempTop.requestTemperatures();
-    }
-    if (!tempBot.getAddress(botAddress,0))
-    {
-        nh.logwarn("No Temperature Sensor Detected");
-        status_msg.temperature_2 = 0;
-    } else {
-        tempBot.setResolution(botAddress, 9);
-        tempBot.setWaitForConversion(false);
-        tempBot.requestTemperatures();
-    }
-
+	nh.advertise(battery_pub);
 }
 
+int16_t prev_current = 512;
+uint16_t prev_voltage = 0;
+
 void loop()
-{
-    status_msg.voltage = 3 * analogRead(PIN_VOLTAGE);
-    status_msg.current = analogRead(PIN_CURRENT);
+{	
+	msgBatteryStatus.voltage = (12 * analogRead(pin_voltage) + 4*prev_voltage)/16;
+	prev_voltage = msgBatteryStatus.voltage;
+	msgBatteryStatus.voltage *= 30;
+	msgBatteryStatus.current = (12 * analogRead(pin_current) + 4*prev_current)/16;
+	prev_current = msgBatteryStatus.current;
+	msgBatteryStatus.current = 333*(msgBatteryStatus.current - 502);
     
-    if (status_msg.voltage > 25500)
-    {
-        batteryState = BS_CHARGING;
-        stateOfCharge = 100; 
-    }   
-    else if(status_msg.voltage < 23000)
-    {
-        batteryState = BS_CRITICAL;
-    }
-    else
-    {
-        batteryState = BS_DISCHARGING;
-    }
+	if(abs(msgBatteryStatus.current) <= 1000 || msgBatteryStatus.voltage < 20)
+	{
+		// Current is less than 1 amp in either direction,
+		// Batteries are disconnected.
+		batteryState = ERROR;
+		stateOfCharge = 0;
+	}
+	else if(msgBatteryStatus.current > 0)
+	{
+		// If current is positive, we are charging
+		stateOfCharge = 100;
+		if (msgBatteryStatus.current < 3000)
+			batteryState = TRICKLE_CHARGING;
+		else
+			batteryState = CHARGING;
+	}
+	else
+	{
+		// Otherwise, we are discharging.
+		stateOfCharge = msgBatteryStatus.voltage/25 - 900;
+		if (stateOfCharge > 100)
+			stateOfCharge = 100;
+		if (stateOfCharge < 20)
+			batteryState = DISCHARGING_CRITICAL;
+		else
+			batteryState = DISCHARGING;
+	}
+	
+	msgBatteryStatus.battery_state = batteryState;
+	msgBatteryStatus.charge = stateOfCharge;
 
-    status_msg.cutter_1 = (digitalRead(CUTTER_L_CHECK) ? FALSE : TRUE);
-    status_msg.cutter_2 = (digitalRead(CUTTER_R_CHECK) ? FALSE : TRUE);
-
-    if (ledMetro.check() == 1)
-    {
-        if (cutterLeftState && !status_msg.cutter_1)
-        {
-            status_msg.cutter_1 = FALSE;
-            cutterLeftState = LOW;
-            digitalWrite(pin_leftCutterControl, LOW);
-            nh.logerror("Estop Left Cutter");
-        }
-        if (cutterRightState && !status_msg.cutter_2)
-        {
-            status_msg.cutter_2 = FALSE;
-            cutterRightState = LOW;
-            digitalWrite(pin_rightCutterControl, LOW);
-            nh.logerror("Estop Right Cutter");
-        }
-
-        updateBatteryDisplay();
-    }
-
-
-    if (msgMetro.check() == 1)
-    {
-        status_msg.temperature_1 = tempTop.getTempCByIndex(0);
-        status_msg.temperature_2 = tempBot.getTempCByIndex(0);
-        tempTop.requestTemperatures();
-        tempBot.requestTemperatures();
-        status_pub.publish( &status_msg );
-    }
-    nh.spinOnce();
+	updateBatteryDisplay();
+	
+	battery_pub.publish( &msgBatteryStatus );
+	
+	nh.spinOnce();
+	delay(750);
 }
