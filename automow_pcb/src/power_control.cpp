@@ -1,13 +1,13 @@
 #include <WProgram.h>
+#include <avr/pgmspace.h>
 #include <ros.h>
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <Metro.h>
 
-#include <automow_node/BatteryStatus.h>
+#include <automow_node/Automow_PCB.h>
 #include <automow_node/Cutters.h>
-#include <automow_node/Temperatures.h>
 
 // Digital IO
 #define pin_leftCutterCheck         2
@@ -26,20 +26,45 @@
 
 ros::NodeHandle nh;
 
-automow_node::BatteryStatus msgBatteryStatus;
+automow_node::Automow_PCB msgStatus;
+using automow_node::Cutters;
 
 enum BatteryState { DISCHARGING = 0,
-					CHARGING_RECOVERY,
-					CHARGING,
-					TRICKLE_CHARGING,
-					DISCHARGING_CRITICAL,
-					ERROR};
+					CHARGING_RECOVERY = 1,
+					CHARGING = 2,
+					TRICKLE_CHARGING = 3,
+					DISCHARGING_CRITICAL = 4,
+					ERROR = 5};
 
 bool ledState = LOW;
+bool leftCutterState = LOW;
+bool rightCutterState = LOW;
 uint8_t batteryState = ERROR;
 uint8_t stateOfCharge = 100;
+int16_t prev_current = 512;
+uint16_t prev_voltage = 0;
 
-ros::Publisher battery_pub("battery_status", &msgBatteryStatus);
+void cb_cutters(const Cutters::Request &req, Cutters::Response &res)
+{
+	digitalWrite(pin_leftCutterControl, req.cutter_1);
+	digitalWrite(pin_rightCutterControl, req.cutter_2);
+	leftCutterState = req.cutter_1;
+	rightCutterState = req.cutter_2;
+	delay(100);
+	res.cutter_1 = (digitalRead(pin_leftCutterCheck) ? FALSE : TRUE);
+	res.cutter_2 = (digitalRead(pin_rightCutterCheck) ? FALSE : TRUE);
+}
+
+
+ros::Publisher status_pub("/automow_pcb/status", &msgStatus);
+ros::ServiceServer<Cutters::Request, Cutters::Response> cutter_srv("cutters", &cb_cutters);
+
+OneWire oneWireTop(pin_temperatureTop);
+OneWire oneWireBot(pin_temperatureBot);
+DallasTemperature temperatureTop(&oneWireTop);
+DallasTemperature temperatureBot(&oneWireBot);
+DeviceAddress topAddress;
+DeviceAddress botAddress;
 
 void updateBatteryDisplay(void)
 {
@@ -119,42 +144,59 @@ void setup()
 	digitalWrite(pin_ledMid, LOW);
 	digitalWrite(pin_ledLow, LOW);
 	
+	temperatureTop.begin();
+    temperatureBot.begin();
+    
+    // Make sure we have temperature sensors, if not, set to something
+    // unreasonable. This would be 0 in Alabama.
+    if(!temperatureTop.getAddress(topAddress,0))
+    {
+        msgStatus.temperature_1 = 0.0;
+    } else {
+        temperatureTop.setResolution(topAddress,9);
+        temperatureTop.setWaitForConversion(false);
+        temperatureTop.requestTemperatures();
+    }
+    if(!temperatureBot.getAddress(botAddress,0))
+    {
+        msgStatus.temperature_2 = 0.0;
+    } else {
+        temperatureBot.setResolution(botAddress,9);
+        temperatureBot.setWaitForConversion(false);
+        temperatureBot.requestTemperatures();
+    }
     nh.initNode(); 
-	nh.advertise(battery_pub);
+	nh.advertise(status_pub);
+	nh.advertiseService(cutter_srv);
 }
-
-int16_t prev_current = 512;
-uint16_t prev_voltage = 0;
 
 void loop()
 {	
-	msgBatteryStatus.voltage = (12 * analogRead(pin_voltage) + 4*prev_voltage)/16;
-	prev_voltage = msgBatteryStatus.voltage;
-	msgBatteryStatus.voltage *= 30;
-	msgBatteryStatus.current = (12 * analogRead(pin_current) + 4*prev_current)/16;
-	prev_current = msgBatteryStatus.current;
-	msgBatteryStatus.current = 333*(msgBatteryStatus.current - 502);
+	msgStatus.voltage = (12 * analogRead(pin_voltage) + 4*prev_voltage)/16;
+	prev_voltage = msgStatus.voltage;
+	msgStatus.voltage *= 30;
+	msgStatus.current = (12 * analogRead(pin_current) + 4*prev_current)/16;
+	prev_current = msgStatus.current;
+	msgStatus.current = 333*(msgStatus.current - 502);
     
-	if(abs(msgBatteryStatus.current) <= 1000 || msgBatteryStatus.voltage < 20)
+	if(abs(msgStatus.current) <= 1000 || msgStatus.voltage < 20)
 	{
 		// Current is less than 1 amp in either direction,
 		// Batteries are disconnected.
 		batteryState = ERROR;
 		stateOfCharge = 0;
 	}
-	else if(msgBatteryStatus.current > 0)
+	else if(msgStatus.current > 0)
 	{
 		// If current is positive, we are charging
 		stateOfCharge = 100;
-		if (msgBatteryStatus.current < 3000)
+		if (msgStatus.current < 3000)
 			batteryState = TRICKLE_CHARGING;
 		else
 			batteryState = CHARGING;
-	}
-	else
-	{
+	} else {
 		// Otherwise, we are discharging.
-		stateOfCharge = msgBatteryStatus.voltage/25 - 900;
+		stateOfCharge = msgStatus.voltage/25 - 900;
 		if (stateOfCharge > 100)
 			stateOfCharge = 100;
 		if (stateOfCharge < 20)
@@ -162,14 +204,32 @@ void loop()
 		else
 			batteryState = DISCHARGING;
 	}
-	
-	msgBatteryStatus.battery_state = batteryState;
-	msgBatteryStatus.charge = stateOfCharge;
-
+	msgStatus.battery_state = batteryState;
+	msgStatus.charge = stateOfCharge;
 	updateBatteryDisplay();
 	
-	battery_pub.publish( &msgBatteryStatus );
+	msgStatus.temperature_1 = temperatureTop.getTempCByIndex(0);
+	msgStatus.temperature_2 = temperatureBot.getTempCByIndex(0);
+	temperatureTop.requestTemperatures();
+	temperatureBot.requestTemperatures();
 	
+	msgStatus.cutter_1 = (digitalRead(pin_leftCutterCheck) ? FALSE : TRUE);
+	msgStatus.cutter_2 = (digitalRead(pin_rightCutterCheck) ? FALSE : TRUE);
+	
+	if(leftCutterState && !msgStatus.cutter_1)
+	{
+		digitalWrite(pin_leftCutterControl, LOW);
+		leftCutterState = LOW;
+		msgStatus.cutter_1 = FALSE;
+	}
+	if(rightCutterState && !msgStatus.cutter_2)
+	{
+		digitalWrite(pin_rightCutterControl, LOW);
+		rightCutterState = LOW;
+		msgStatus.cutter_2 = FALSE;
+	}
+	
+	status_pub.publish( &msgStatus );
 	nh.spinOnce();
-	delay(750);
+	delay(250);
 }
