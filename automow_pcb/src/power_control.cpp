@@ -177,15 +177,19 @@ void loop()
 	msgStatus.voltage *= 30;
 	msgStatus.current = (12 * analogRead(pin_current) + 4*prev_current)/16;
 	prev_current = msgStatus.current;
-	msgStatus.current = 333*(msgStatus.current - 502);
+	msgStatus.current = 333*(msgStatus.current - 501);
     
-	if(abs(msgStatus.current) <= 1000 || msgStatus.voltage < 20)
+	if(abs(msgStatus.current) <= 1000 )
 	{
 		// Current is less than 1 amp in either direction,
-		// Batteries are disconnected.
+		// Batteries are (probably?) disconnected.
 		batteryState = ERROR;
-		stateOfCharge = 0;
 	}
+    else if(msgStatus.voltage < 20000)
+    {
+        batteryState = ERROR;
+        stateOfCharge = 0;
+    }
 	else if(msgStatus.current > 0)
 	{
 		// If current is positive, we are charging
@@ -231,5 +235,5 @@ void loop()
 	
 	status_pub.publish( &msgStatus );
 	nh.spinOnce();
-	delay(250);
+	delay(400);
 }
