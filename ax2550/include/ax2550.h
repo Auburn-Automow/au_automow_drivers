@@ -8,7 +8,7 @@
 
 #include "boost/thread/mutex.hpp"
 
-#include "serial.h"
+#include "serial/serial.h"
 
 /* Structs */
 struct AX2550_ENCODER {
