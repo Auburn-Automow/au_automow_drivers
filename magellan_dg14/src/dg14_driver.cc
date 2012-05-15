@@ -9,7 +9,7 @@
 #include <iostream>
 #include <fstream>
 #include <cmath>
-#include <serial.h>
+#include <serial/serial.h>
 #include <boost/thread.hpp>
 #include <boost/asio.hpp>
 #include <boost/regex.hpp>
@@ -61,7 +61,7 @@ class Gps {
             /* TODO: Make sure the serial port opened properly */
             s_.setPort(port);
             s_.setBaudrate(baud);
-            s_.setTimeoutMilliseconds(250);
+            s_.setTimeout(250);
             s_.open();
             utc_time = 0.0;
             testing = false;
@@ -95,7 +95,7 @@ class Gps {
         }
         
         void Step() {
-            string line = s_.read_until('\n');
+            string line = s_.readline();
             process_data(line);
         }
         

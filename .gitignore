@@ -1,4 +1,6 @@
 build
+bin
+cfg
 msg_gen
 srv_gen
 *.pyc
