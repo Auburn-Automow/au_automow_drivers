@@ -3,6 +3,7 @@
 import sys
 import os
 import serial
+import time
 
 def loader(fname, port, baud):
     s = serial.Serial(port=port, baudrate=baud)
@@ -11,7 +12,9 @@ def loader(fname, port, baud):
     s.write("\r\n\r\n\r\n")
     s.write("$PASHS,NME,ALL,A,OFF\r\n")
     s.write("$PASHS,NME,ALL,B,OFF\r\n")
-    s.flush()
+    s.timeout = 0.1
+    time.sleep(1)
+    s.read()
 
     for line in f.readlines():
         if not line.startswith(';'):
@@ -19,6 +22,13 @@ def loader(fname, port, baud):
             print '>> ' + l
             s.write(l + '\r\n')
             print '<< ' + s.readline().strip()
+
+    s.write("$PASHQ,CPD\r\n")
+    s.write("$PASHQ,PAR\r\n")
+    while True:
+        line = s.readline()
+        if not line.startswith("$"):
+            print line.rstrip()
 
 def main(argv, stdout):
     usage = "usage: %prog [options] /path/to/config"

@@ -22,6 +22,7 @@ $PASHS,RTC,SPD,9
 ; Turn on local messages
 $PASHS,LPS,1,1,1
 $PASHS,DYN,1
+$PASHS,SBA,DAM
 ; Solar House (Marker)
 $PASHS,POS,3235.35981083,N,8529.38734883,W,+175.899
 ; Save to PROM
