@@ -3,6 +3,7 @@ int16 FIX_TYPE_RAW = 1
 int16 FIX_TYPE_FLOAT = 2
 int16 FIX_TYPE_FIXED = 3
 int16 FIX_TYPE_FIXED_SBAS = 4
+int16 FIX_BESTESTER = 5 # Better than 4?  Don't know about this one...
 
 Header header
 float64 utc_time # In seconds

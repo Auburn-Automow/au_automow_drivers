@@ -14,8 +14,8 @@
   <depend package="nav_msgs"/>
   <depend package="sensor_msgs"/>
   <depend package="serial" />
-  <depend package="gps_common" />
-  <depend package="dynamic_reconfigure" />
+  <depend package="diagnostic_updater" />
+
 </package>
 
 
