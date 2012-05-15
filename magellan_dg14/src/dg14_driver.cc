@@ -201,7 +201,7 @@ class Gps {
             utm_fix_pub.publish(utm_fix);
 
             gps_odom.header.stamp = utm_fix.header.stamp;
-            gps_odom.header.frame_id = "base_footprint";
+            gps_odom.header.frame_id = "odom";
             gps_odom.pose.pose.position.x = utm_fix.easting - easting_origin;
             gps_odom.pose.pose.position.y = utm_fix.northing - northing_origin;
             gps_odom.pose.pose.position.z = 0;
