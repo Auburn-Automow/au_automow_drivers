@@ -5,26 +5,14 @@ import os
 import serial
 import time
 
-def loader(fname, port, baud):
+def check(port, baud):
     s = serial.Serial(port=port, baudrate=baud)
-    f = open(fname)
 
     s.write("\r\n\r\n\r\n")
-    s.write("$PASHS,NME,ALL,A,OFF\r\n")
-    s.write("$PASHS,NME,ALL,B,OFF\r\n")
-    s.timeout = 0.1
     time.sleep(1)
     s.read()
 
-    for line in f.readlines():
-        if not line.startswith(';'):
-            l = line.strip()
-            print '>> ' + l
-            s.write(l + '\r\n')
-            print '<< ' + s.readline().strip()
-
     s.write("$PASHQ,CPD\r\n")
-    s.write("$PASHQ,PAR\r\n")
     while True:
         line = s.readline()
         if not line.startswith("$"):
@@ -40,14 +28,9 @@ def main(argv, stdout):
             default=115200,
             help="Serial port baud rate")
     (options, args) = parser.parse_args(argv)
-    if len(args) < 2:
-        parser.error("Please specify a config file.")
-        syst.exit(1)
-
-    configFile = args[1]
 
     try:
-        loader(configFile, options.port, options.baud)
+        check(options.port, options.baud)
     except ValueError:
         pass
 
