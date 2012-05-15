@@ -1,19 +1,22 @@
 #include <ros/ros.h>
+
 #include <algorithm>
 #include <iterator>
 #include <time.h>
 #include <unistd.h>
-#include <boost/program_options.hpp>
 #include <string>
 #include <sstream>
 #include <iostream>
 #include <fstream>
 #include <cmath>
-#include <serial/serial.h>
+
 #include <boost/thread.hpp>
 #include <boost/asio.hpp>
 #include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/program_options.hpp>
+
+#include <serial/serial.h>
 #include <gps_common/GPSFix.h>
 #include <gps_common/GPSStatus.h>
 #include <sensor_msgs/NavSatFix.h>
@@ -22,6 +25,8 @@
 #include <dynamic_reconfigure/server.h>
 #include "magellan_dg14/GpsConfig.h"
 #include <magellan_dg14/UTMFix.h>
+
+#include <tf/transform_datatypes.h>
 
 using namespace gps_common;
 using namespace sensor_msgs;
@@ -73,11 +78,8 @@ class Gps {
             gps_timer = node.createTimer(ros::Duration(1.0/5.0), &Gps::publish_callback, this);
             
             f = boost::bind(&Gps::update_params_callback, boost::ref(this), _1, _2);
-            //f = boost::bind(&callback_test, _1, _2);
             srv.setCallback(f);
-            
-            ROS_DEBUG("Finidished Init");
-
+            ROS_DEBUG("Finished Init");
             return true;
         }
         
@@ -152,9 +154,7 @@ class Gps {
             else {
                 //ROS_WARN("Received an incompatable or incomplete message: %s %s", tokens[0], tokens[1]);
             }
-            
             fix.status = status;
-            
             // publish
             if (testing) {
                 if (utc_time != utc_time_old)
@@ -191,24 +191,6 @@ class Gps {
              */
             int mode = atoi(tokens[6].c_str());
             utm_fix.fix_type = mode;
-            // if (mode == 0) {
-            //     utm_fix.fix_type = 0;
-            // }
-            // else if (mode == 1) {
-            //     utm_fix.fix_type = 1;
-            // }
-            // else if (mode == 2) {
-            //     utm_fix.fix_type = 2;
-            // }
-            // else if (mode == 3) {
-            //     utm_fix.fix_type = 3;
-            // }
-            // else if (mode == 4) {
-            //     utm_fix.fix_type = 4;
-            // }
-            // else {
-            //     utm_fix.fix_type = -1;
-            // }
             utm_fix.num_satellites = atoi(tokens[7].c_str());
             utm_fix.hdop = strtod(tokens[8].c_str(), NULL);
             utm_fix.antenna_height = strtod(tokens[9].c_str(), NULL);
@@ -223,10 +205,9 @@ class Gps {
             gps_odom.pose.pose.position.x = utm_fix.easting - easting_origin;
             gps_odom.pose.pose.position.y = utm_fix.northing - northing_origin;
             gps_odom.pose.pose.position.z = 0;
-            gps_odom.pose.pose.orientation.x = 1;
-            gps_odom.pose.pose.orientation.y = 0;
-            gps_odom.pose.pose.orientation.z = 0;
-            gps_odom.pose.pose.orientation.w = 0;
+
+            gps_odom.pose.pose.orientation = tf::createQuaternionMsgFromYaw(fix.track);
+
             
             // Use ENU covariance to build XYZRPY covariance
             boost::array<double, 36> covariance = {{
@@ -248,7 +229,6 @@ class Gps {
             }};
 
             gps_odom.pose.covariance = covariance;
-
             gps_odom_pub.publish(gps_odom);
         }
         
@@ -296,24 +276,12 @@ class Gps {
             fix.track = strtod(tokens[11].c_str(), NULL);
             fix.speed = 0.5144 * strtod(tokens[12].c_str(), NULL); // DG14 returns knots, gps message expects mps
             fix.climb = strtod(tokens[13].c_str(), NULL);
-            // fix.pitch;
-            // fix.roll;
-            // fix.dip;
             fix.time = strtod(tokens[4].c_str(), NULL);
             fix.pdop = strtod(tokens[14].c_str(), NULL);
             fix.hdop = strtod(tokens[15].c_str(), NULL);
             fix.vdop = strtod(tokens[16].c_str(), NULL);
             fix.tdop = strtod(tokens[17].c_str(), NULL);
             fix.gdop = sqrt(pow(fix.pdop, 2.0) + pow(fix.tdop, 2.0));
-            // fix.err;
-            // fix.err_horz;
-            // fix.err_vert;
-            // fix.err_track;
-            // fix.err_speed;
-            // fix.err_time;
-            // fix.err_pitch;
-            // fix.err_roll;
-            // fix.err_dip;
         }
         
         void process_data_gst(vector<string> &tokens) {

@@ -8,9 +8,17 @@ def loader(fname, port, baud):
     s = serial.Serial(port=port, baudrate=baud)
     f = open(fname)
 
+    s.write("\r\n\r\n\r\n")
     s.write("$PASHS,NME,ALL,A,OFF\r\n")
     s.write("$PASHS,NME,ALL,B,OFF\r\n")
+    s.flush()
 
+    for line in f.readlines():
+        if not line.startswith(';'):
+            l = line.strip()
+            print '>> ' + l
+            s.write(l + '\r\n')
+            print '<< ' + s.readline().strip()
 
 def main(argv, stdout):
     usage = "usage: %prog [options] /path/to/config"
